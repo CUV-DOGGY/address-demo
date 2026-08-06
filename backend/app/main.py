@@ -3,6 +3,8 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.routers.address_routers import router as address_router
+
 
 def get_allowed_origins() -> list[str]:
     configured_origins = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
@@ -18,9 +20,11 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=get_allowed_origins(),
     allow_credentials=False,
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST"],
     allow_headers=["Accept", "Content-Type"],
 )
+
+app.include_router(address_router)
 
 
 @app.get("/health")
