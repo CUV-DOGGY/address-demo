@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -23,6 +23,64 @@ class AddressCoordinate(BaseModel):
     )
 
 
+class AddressLocationBase(BaseModel):
+    """地址位置的公共字段。"""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        str_strip_whitespace=True,
+    )
+
+    coordinate: AddressCoordinate = Field(..., description="高德位置坐标")
+    adcode: str = Field(
+        ...,
+        pattern=r"^[0-9]{6}$",
+        description="中国大陆 6 位行政区划编码",
+    )
+
+
+class PoiAddressLocation(AddressLocationBase):
+    """通过高德 POI 选择的地址位置。"""
+
+    source: Literal["poi"]
+    amap_poi_id: str = Field(
+        ...,
+        min_length=1,
+        max_length=64,
+        description="高德 POI ID",
+    )
+    poi_name: str = Field(
+        ...,
+        min_length=1,
+        max_length=255,
+        description="高德 POI 名称",
+    )
+
+
+class PositionAddressLocation(AddressLocationBase):
+    """通过地图拖拽选择的地址位置。"""
+
+    source: Literal["position"]
+    amap_poi_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=64,
+        description="附近的高德 POI ID",
+    )
+    poi_name: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=255,
+        description="附近的高德 POI 名称",
+    )
+
+
+AddressLocation = Annotated[
+    PoiAddressLocation | PositionAddressLocation,
+    Field(discriminator="source"),
+]
+
+
 class AddressCreateRequest(BaseModel):
     """添加收货地址的请求模型。"""
 
@@ -35,9 +93,15 @@ class AddressCreateRequest(BaseModel):
                 "phone_number": "13800138000",
                 "shipping_address": "广东省深圳市南山区科技园",
                 "detail_address": "某某大厦 10 楼 1001 室",
-                "coordinate": {
-                    "longitude": 113.934528,
-                    "latitude": 22.540503,
+                "location": {
+                    "source": "poi",
+                    "coordinate": {
+                        "longitude": 113.934528,
+                        "latitude": 22.540503,
+                    },
+                    "adcode": "440305",
+                    "amap_poi_id": "B0XXXXXX",
+                    "poi_name": "深圳湾科技生态园",
                 },
                 "is_default": False,
             }
@@ -67,9 +131,9 @@ class AddressCreateRequest(BaseModel):
         max_length=255,
         description="门牌号、楼层、房间号等详细地址",
     )
-    coordinate: AddressCoordinate = Field(
+    location: AddressLocation = Field(
         ...,
-        description="地图选点的经纬度坐标",
+        description="经过高德解析并由用户确认的位置",
     )
     is_default: bool = Field(
         default=False,

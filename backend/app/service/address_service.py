@@ -21,7 +21,6 @@ class AddressService:
         user_id: UUID,
     ) -> AddressCreateResponse:
         """校验并创建用户的收货地址。"""
-
         # TODO: 向高德地图发起地址编码请求。
         # TODO: 对比高德返回坐标与 request.coordinate 是否一致，不一致时抛出业务异常。
         # TODO: 生成包含联系人、地址和坐标的完整收货信息快照。
