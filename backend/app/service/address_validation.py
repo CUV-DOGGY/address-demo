@@ -5,6 +5,14 @@ from app.amap.models import AmapResolvedLocation
 from app.schema.address_schema import AddressValidData
 
 
+class AddressAcodeError(RuntimeError):
+    """地址的行政编码错误"""
+
+
+class AddressLocationError(RuntimeError):
+    """地址的经纬坐标错误"""
+
+
 class AddressValidation:
     _EARTH_RADIUS_METERS = 6_371_000
     _MAX_SELECTED_POI_DISTANCE_METERS = 200
@@ -15,7 +23,7 @@ class AddressValidation:
 
     async def address_validation(
         self, addressvaliddata: AddressValidData
-    ) -> tuple[AmapResolvedLocation, bool]:
+    ) -> AmapResolvedLocation:
         """Verify the submitted location against current Amap data."""
 
         location = addressvaliddata.location
@@ -24,27 +32,30 @@ class AddressValidation:
                 location.coordinate
             )
             if resolved_location.adcode != location.adcode:
-                return resolved_location, False
+                raise AddressAcodeError("地址的行政编码错误")
 
             if location.amap_poi_id is None:
-                return resolved_location, True
+                return resolved_location
 
             poi = await self._amap_client.get_poi_detail(location.amap_poi_id)
-            status = (
+
+            if (
                 self._distance_in_meters(location.coordinate, poi.location)
-                <= self._MAX_POSITION_POI_DISTANCE_METERS
-            )
-            return resolved_location, status
+                > self._MAX_POSITION_POI_DISTANCE_METERS
+            ):
+                raise AddressLocationError("地址的经纬坐标错误")
+            return resolved_location
 
         poi = await self._amap_client.get_poi_detail(location.amap_poi_id)
         if poi.adcode != location.adcode:
-            return poi, False
+            raise AddressAcodeError("地址的行政编码错误")
 
-        status = (
+        if (
             self._distance_in_meters(location.coordinate, poi.location)
-            <= self._MAX_SELECTED_POI_DISTANCE_METERS
-        )
-        return poi, status
+            > self._MAX_SELECTED_POI_DISTANCE_METERS
+        ):
+            raise AddressLocationError("地址的经纬坐标错误")
+        return poi
 
     @classmethod
     def _distance_in_meters(cls, first: str, second: str) -> float:
