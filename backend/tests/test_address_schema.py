@@ -17,13 +17,9 @@ def make_request_payload() -> dict[str, object]:
         "detail_address": "9 栋 B 座 1001 室",
         "location": {
             "source": "poi",
-            "coordinate": {
-                "longitude": 113.946123,
-                "latitude": 22.530456,
-            },
+            "coordinate": "113.946123,22.530456",
             "adcode": "440305",
             "amap_poi_id": "B0XXXXXX",
-            "poi_name": "深圳湾科技生态园",
         },
     }
 
@@ -34,39 +30,32 @@ class AddressCreateRequestTests(unittest.TestCase):
 
         self.assertIsInstance(request.location, PoiAddressLocation)
         self.assertEqual(request.location.amap_poi_id, "B0XXXXXX")
-        self.assertEqual(request.location.poi_name, "深圳湾科技生态园")
+        self.assertEqual(request.location.coordinate, "113.946123,22.530456")
         self.assertFalse(request.is_default)
 
-    def test_poi_location_requires_poi_id_and_name(self) -> None:
-        for missing_field in ("amap_poi_id", "poi_name"):
-            with self.subTest(missing_field=missing_field):
-                payload = make_request_payload()
-                location = payload["location"]
-                self.assertIsInstance(location, dict)
-                location.pop(missing_field)
+    def test_poi_location_requires_poi_id(self) -> None:
+        payload = make_request_payload()
+        location = payload["location"]
+        self.assertIsInstance(location, dict)
+        location.pop("amap_poi_id")
 
-                with self.assertRaises(ValidationError):
-                    AddressCreateRequest.model_validate(payload)
+        with self.assertRaises(ValidationError):
+            AddressCreateRequest.model_validate(payload)
 
-    def test_poi_location_rejects_blank_poi_id_and_name(self) -> None:
-        for blank_field in ("amap_poi_id", "poi_name"):
-            with self.subTest(blank_field=blank_field):
-                payload = make_request_payload()
-                location = payload["location"]
-                self.assertIsInstance(location, dict)
-                location[blank_field] = "   "
+    def test_poi_location_rejects_blank_poi_id(self) -> None:
+        payload = make_request_payload()
+        location = payload["location"]
+        self.assertIsInstance(location, dict)
+        location["amap_poi_id"] = "   "
 
-                with self.assertRaises(ValidationError):
-                    AddressCreateRequest.model_validate(payload)
+        with self.assertRaises(ValidationError):
+            AddressCreateRequest.model_validate(payload)
 
     def test_accepts_position_location_without_poi_fields(self) -> None:
         payload = make_request_payload()
         payload["location"] = {
             "source": "position",
-            "coordinate": {
-                "longitude": 113.946123,
-                "latitude": 22.530456,
-            },
+            "coordinate": "113.946123,22.530456",
             "adcode": "440305",
         }
 
@@ -74,19 +63,14 @@ class AddressCreateRequestTests(unittest.TestCase):
 
         self.assertIsInstance(request.location, PositionAddressLocation)
         self.assertIsNone(request.location.amap_poi_id)
-        self.assertIsNone(request.location.poi_name)
 
     def test_accepts_position_location_with_null_poi_fields(self) -> None:
         payload = make_request_payload()
         payload["location"] = {
             "source": "position",
-            "coordinate": {
-                "longitude": 113.946123,
-                "latitude": 22.530456,
-            },
+            "coordinate": "113.946123,22.530456",
             "adcode": "440305",
             "amap_poi_id": None,
-            "poi_name": None,
         }
 
         request = AddressCreateRequest.model_validate(payload)
@@ -152,26 +136,23 @@ class AddressCreateRequestTests(unittest.TestCase):
                 with self.assertRaises(ValidationError):
                     AddressCreateRequest.model_validate(payload)
 
-    def test_requires_longitude_and_latitude(self) -> None:
-        for missing_field in ("longitude", "latitude"):
-            with self.subTest(missing_field=missing_field):
-                payload = make_request_payload()
-                location = payload["location"]
-                self.assertIsInstance(location, dict)
-                coordinate = location["coordinate"]
-                self.assertIsInstance(coordinate, dict)
-                coordinate.pop(missing_field)
+    def test_requires_coordinate(self) -> None:
+        payload = make_request_payload()
+        location = payload["location"]
+        self.assertIsInstance(location, dict)
+        location.pop("coordinate")
 
-                with self.assertRaises(ValidationError):
-                    AddressCreateRequest.model_validate(payload)
+        with self.assertRaises(ValidationError):
+            AddressCreateRequest.model_validate(payload)
 
-    def test_accepts_coordinate_boundary_values(self) -> None:
+    def test_accepts_and_normalizes_valid_coordinates(self) -> None:
         boundary_coordinates = (
-            {"longitude": -180, "latitude": -90},
-            {"longitude": 180, "latitude": 90},
+            ("113.934528, 22.540503", "113.934528,22.540503"),
+            ("-180,-90", "-180,-90"),
+            ("180.000000,90.000000", "180.000000,90.000000"),
         )
 
-        for coordinate in boundary_coordinates:
+        for coordinate, expected in boundary_coordinates:
             with self.subTest(coordinate=coordinate):
                 payload = make_request_payload()
                 location = payload["location"]
@@ -180,21 +161,14 @@ class AddressCreateRequestTests(unittest.TestCase):
 
                 request = AddressCreateRequest.model_validate(payload)
 
-                self.assertEqual(
-                    request.location.coordinate.longitude,
-                    coordinate["longitude"],
-                )
-                self.assertEqual(
-                    request.location.coordinate.latitude,
-                    coordinate["latitude"],
-                )
+                self.assertEqual(request.location.coordinate, expected)
 
     def test_rejects_out_of_range_coordinates(self) -> None:
         invalid_coordinates = (
-            {"longitude": -180.000001, "latitude": 0},
-            {"longitude": 180.000001, "latitude": 0},
-            {"longitude": 0, "latitude": -90.000001},
-            {"longitude": 0, "latitude": 90.000001},
+            "-180.000001,0",
+            "180.000001,0",
+            "0,-90.000001",
+            "0,90.000001",
         )
 
         for coordinate in invalid_coordinates:
@@ -207,16 +181,26 @@ class AddressCreateRequestTests(unittest.TestCase):
                 with self.assertRaises(ValidationError):
                     AddressCreateRequest.model_validate(payload)
 
-    def test_preserves_original_coordinate_validation(self) -> None:
-        payload = make_request_payload()
-        location = payload["location"]
-        self.assertIsInstance(location, dict)
-        coordinate = location["coordinate"]
-        self.assertIsInstance(coordinate, dict)
-        coordinate["longitude"] = 181
+    def test_rejects_invalid_coordinate_formats(self) -> None:
+        invalid_coordinates: tuple[object, ...] = (
+            "113.934528",
+            "113.934528,22.540503,1",
+            "longitude,latitude",
+            "113.934528,22.5405031",
+            "113.934528 22.540503",
+            "113.934528,",
+            {"longitude": 113.934528, "latitude": 22.540503},
+        )
 
-        with self.assertRaises(ValidationError):
-            AddressCreateRequest.model_validate(payload)
+        for coordinate in invalid_coordinates:
+            with self.subTest(coordinate=coordinate):
+                payload = make_request_payload()
+                location = payload["location"]
+                self.assertIsInstance(location, dict)
+                location["coordinate"] = coordinate
+
+                with self.assertRaises(ValidationError):
+                    AddressCreateRequest.model_validate(payload)
 
     def test_preserves_unknown_field_rejection(self) -> None:
         payload = make_request_payload()

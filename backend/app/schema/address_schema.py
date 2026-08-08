@@ -1,26 +1,11 @@
+import re
+from decimal import Decimal
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-
-class AddressCoordinate(BaseModel):
-    """地图选点坐标。"""
-
-    model_config = ConfigDict(extra="forbid")
-
-    longitude: float = Field(
-        ...,
-        ge=-180,
-        le=180,
-        description="经度",
-    )
-    latitude: float = Field(
-        ...,
-        ge=-90,
-        le=90,
-        description="纬度",
-    )
+COORDINATE_NUMBER_PATTERN = re.compile(r"^-?(?:0|[1-9]\d*)(?:\.\d{1,6})?$")
 
 
 class AddressLocationBase(BaseModel):
@@ -31,12 +16,38 @@ class AddressLocationBase(BaseModel):
         str_strip_whitespace=True,
     )
 
-    coordinate: AddressCoordinate = Field(..., description="高德位置坐标")
+    coordinate: str = Field(
+        ...,
+        description="高德坐标，格式为 longitude,latitude，最多六位小数",
+        examples=["113.934528,22.540503"],
+    )
     adcode: str = Field(
         ...,
         pattern=r"^[0-9]{6}$",
         description="中国大陆 6 位行政区划编码",
     )
+
+    @field_validator("coordinate")
+    @classmethod
+    def validate_coordinate(cls, value: str) -> str:
+        parts = value.split(",")
+        if len(parts) != 2:
+            raise ValueError("坐标必须使用 longitude,latitude 格式")
+
+        longitude_text, latitude_text = (part.strip() for part in parts)
+        if not COORDINATE_NUMBER_PATTERN.fullmatch(longitude_text):
+            raise ValueError("经度必须是数字且小数点后最多 6 位")
+        if not COORDINATE_NUMBER_PATTERN.fullmatch(latitude_text):
+            raise ValueError("纬度必须是数字且小数点后最多 6 位")
+
+        longitude = Decimal(longitude_text)
+        latitude = Decimal(latitude_text)
+        if not Decimal("-180") <= longitude <= Decimal("180"):
+            raise ValueError("经度必须在 -180 到 180 之间")
+        if not Decimal("-90") <= latitude <= Decimal("90"):
+            raise ValueError("纬度必须在 -90 到 90 之间")
+
+        return f"{longitude_text},{latitude_text}"
 
 
 class PoiAddressLocation(AddressLocationBase):
@@ -49,12 +60,6 @@ class PoiAddressLocation(AddressLocationBase):
         max_length=64,
         description="高德 POI ID",
     )
-    poi_name: str = Field(
-        ...,
-        min_length=1,
-        max_length=255,
-        description="高德 POI 名称",
-    )
 
 
 class PositionAddressLocation(AddressLocationBase):
@@ -66,12 +71,6 @@ class PositionAddressLocation(AddressLocationBase):
         min_length=1,
         max_length=64,
         description="附近的高德 POI ID",
-    )
-    poi_name: str | None = Field(
-        default=None,
-        min_length=1,
-        max_length=255,
-        description="附近的高德 POI 名称",
     )
 
 
@@ -95,13 +94,9 @@ class AddressCreateRequest(BaseModel):
                 "detail_address": "某某大厦 10 楼 1001 室",
                 "location": {
                     "source": "poi",
-                    "coordinate": {
-                        "longitude": 113.934528,
-                        "latitude": 22.540503,
-                    },
+                    "coordinate": "113.934528, 22.540503",
                     "adcode": "440305",
                     "amap_poi_id": "B0XXXXXX",
-                    "poi_name": "深圳湾科技生态园",
                 },
                 "is_default": False,
             }
@@ -155,9 +150,7 @@ class AddressCreateResponse(BaseModel):
             "example": {
                 "code": 200,
                 "message": "地址添加成功",
-                "data": {
-                    "address_id": "550e8400-e29b-41d4-a716-446655440000"
-                },
+                "data": {"address_id": "550e8400-e29b-41d4-a716-446655440000"},
             }
         }
     )
@@ -165,3 +158,37 @@ class AddressCreateResponse(BaseModel):
     code: Literal[200] = Field(default=200, description="业务状态码")
     message: str = Field(default="地址添加成功", description="响应消息")
     data: AddressCreateResponseData
+
+
+class AddressValidData(BaseModel):
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "shipping_address": "广东省深圳市南山区科技园",
+                "detail_address": "某某大厦 10 楼 1001 室",
+                "location": {
+                    "source": "poi",
+                    "coordinate": "113.934528, 22.540503",
+                    "adcode": "440305",
+                    "amap_poi_id": "B0XXXXXX",
+                },
+            }
+        }
+    )
+    shipping_address: str = Field(
+        ...,
+        min_length=1,
+        max_length=255,
+        description="地图选点得到的收货地址",
+    )
+    detail_address: str = Field(
+        ...,
+        min_length=1,
+        max_length=255,
+        description="门牌号、楼层、房间号等详细地址",
+    )
+    location: AddressLocation = Field(
+        ...,
+        description="经过高德解析并由用户确认的位置",
+    )

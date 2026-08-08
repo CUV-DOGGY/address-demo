@@ -1,19 +1,24 @@
-from typing import Annotated
 from uuid import UUID
 
-from fastapi import Depends, HTTPException, status
+from fastapi import HTTPException, status
 
-from app.repository.address_repository import (
-    AddressRepository,
+from app.repository.address_repository import AddressRepository
+from app.schema.address_schema import (
+    AddressCreateRequest,
+    AddressCreateResponse,
+    AddressValidData,
 )
-from app.schema.address_schema import AddressCreateRequest, AddressCreateResponse
+from app.service.address_validation import AddressValidation
 
 
 class AddressService:
     """地址业务服务骨架。"""
 
-    def __init__(self, repository: AddressRepository) -> None:
+    def __init__(
+        self, repository: AddressRepository, addressvalidation: AddressValidation
+    ) -> None:
         self._repository = repository
+        self._addressvalidation = addressvalidation
 
     async def create_address(
         self,
@@ -21,12 +26,30 @@ class AddressService:
         user_id: UUID,
     ) -> AddressCreateResponse:
         """校验并创建用户的收货地址。"""
-        # TODO: 向高德地图发起地址编码请求。
-        # TODO: 对比高德返回坐标与 request.coordinate 是否一致，不一致时抛出业务异常。
-        # TODO: 生成包含联系人、地址和坐标的完整收货信息快照。
-        # TODO: 当 request.is_default 为 True 时，取消该用户的其他默认地址。
-        # TODO: 通过 AddressRepository 持久化地址并返回 AddressCreateResponse。
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail="添加地址服务尚未实现",
+
+        validation_data = AddressValidData(
+            shipping_address=request.shipping_address,
+            detail_address=request.detail_address,
+            location=request.location,
         )
+        resolved_location, validation_status = (
+            await self._addressvalidation.address_validation(validation_data)
+        )
+        if not validation_status:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="地址校验失败",
+            )
+
+        address_data = {
+            "receiver_name": request.receiver_name,
+            "phone_number": request.phone_number,
+            "shipping_address": request.shipping_address,
+            "detail_address": request.detail_address,
+            "location": request.location.model_dump(),
+            "is_default": request.is_default,
+            "formatted_address": resolved_location.formatted_address,
+            "adcode": resolved_location.adcode,
+        }
+        response_data = self._repository.create_address(address_data)
+        return AddressCreateResponse(data=response_data)
