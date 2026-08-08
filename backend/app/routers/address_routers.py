@@ -1,7 +1,10 @@
+from uuid import UUID
+
 from fastapi import APIRouter, HTTPException, status
 
 from app.core.depedencies import AddressServiceDependency
 from app.schema.address_schema import (
+    Address,
     AddressCreateRequest,
     AddressCreateResponse,
     AddressDeleteRequest,
@@ -9,10 +12,30 @@ from app.schema.address_schema import (
 )
 from app.service.address_service import (
     AddressCreateError,
+    AddressGetError,
     AddressValidationError,
 )
 
 router = APIRouter(prefix="/addresses", tags=["addresses"])
+
+
+@router.get(
+    "/get",
+    response_model=Address,
+    status_code=status.HTTP_200_OK,
+    summary="获取收货地址",
+)
+async def get_address(
+    address_id: UUID,
+    address_service: AddressServiceDependency,
+) -> Address:
+    try:
+        return await address_service.get_address(address_id)
+    except AddressGetError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(exc),
+        ) from exc
 
 
 @router.post(

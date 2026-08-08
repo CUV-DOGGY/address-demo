@@ -80,6 +80,21 @@ AddressLocation = Annotated[
 ]
 
 
+class Address(BaseModel):
+    """数据库中的完整地址信息。"""
+
+    address_id: UUID
+    receiver_name: str
+    phone_number: str
+    shipping_address: str
+    detail_address: str
+    location: AddressLocation
+    is_default: bool
+    is_delete: bool
+    formatted_address: str
+    adcode: str
+
+
 class AddressCreateRequest(BaseModel):
     """添加收货地址的请求模型。"""
 

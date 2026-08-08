@@ -1,4 +1,4 @@
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from app.amap.exceptions import (
     AmapAddressFetchError,
@@ -9,6 +9,7 @@ from app.amap.exceptions import (
 )
 from app.repository.address_repository import AddressRepository
 from app.schema.address_schema import (
+    Address,
     AddressCreateRequest,
     AddressCreateResponseData,
     AddressDeleteRequest,
@@ -24,6 +25,10 @@ from app.service.address_validation import (
 
 class AddressCreateError(RuntimeError):
     """地址创建失败"""
+
+
+class AddressGetError(RuntimeError):
+    """获取地址信息失败。"""
 
 
 class AddressValidationError(RuntimeError):
@@ -92,6 +97,7 @@ class AddressService:
             raise AddressFetchError("高德地址获取失败") from exc
 
         address_id = uuid4()
+        is_delete = False
         address_data = {
             "address_id": str(address_id),
             "receiver_name": request.receiver_name,
@@ -100,6 +106,7 @@ class AddressService:
             "detail_address": request.detail_address,
             "location": request.location.model_dump(),
             "is_default": request.is_default,
+            "is_delete": is_delete,
             "formatted_address": resolved_location.formatted_address,
             "adcode": resolved_location.adcode,
         }
@@ -108,6 +115,15 @@ class AddressService:
             raise AddressCreateError("地址创建失败")
 
         return AddressCreateResponseData(address_id=address_id)
+
+    async def get_address(self, address_id: UUID) -> Address:
+        """获取一条地址信息。"""
+
+        address_data = await self._repository.get_address(address_id)
+        if address_data is None:
+            raise AddressGetError("获取地址信息失败")
+
+        return Address.model_validate(address_data)
 
     async def delete_address(
         self,
