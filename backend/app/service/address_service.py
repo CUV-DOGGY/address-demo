@@ -11,6 +11,8 @@ from app.repository.address_repository import AddressRepository
 from app.schema.address_schema import (
     AddressCreateRequest,
     AddressCreateResponseData,
+    AddressDeleteRequest,
+    AddressDeleteResponse,
     AddressValidData,
 )
 from app.service.address_validation import (
@@ -88,9 +90,10 @@ class AddressService:
             raise AddressNotFoundError("未获取到有效地址") from exc
         except AmapAddressFetchError as exc:
             raise AddressFetchError("高德地址获取失败") from exc
+
         address_id = uuid4()
         address_data = {
-            "adress_id": address_id,
+            "address_id": str(address_id),
             "receiver_name": request.receiver_name,
             "phone_number": request.phone_number,
             "shipping_address": request.shipping_address,
@@ -104,4 +107,13 @@ class AddressService:
         if address_create_id is None:
             raise AddressCreateError("地址创建失败")
 
-        return address_create_id
+        return AddressCreateResponseData(address_id=address_id)
+
+    async def delete_address(
+        self,
+        request: AddressDeleteRequest,
+    ) -> AddressDeleteResponse:
+        """删除地址服务。"""
+
+        await self._repository.delete_address(request.address_id)
+        return AddressDeleteResponse()

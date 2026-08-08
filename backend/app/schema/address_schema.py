@@ -160,6 +160,32 @@ class AddressCreateResponse(BaseModel):
     data: AddressCreateResponseData
 
 
+class AddressDeleteRequest(BaseModel):
+    """删除收货地址的请求模型。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    address_id: UUID = Field(..., description="待删除地址的 UUID")
+
+
+class AddressDeleteResponse(BaseModel):
+    """删除收货地址成功时的统一响应模型。"""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "code": 200,
+                "message": "地址删除成功",
+                "data": None,
+            }
+        }
+    )
+
+    code: Literal[200] = Field(default=200, description="业务状态码")
+    message: str = Field(default="地址删除成功", description="响应消息")
+    data: None = Field(default=None, description="删除接口无返回数据")
+
+
 class AddressValidData(BaseModel):
 
     model_config = ConfigDict(

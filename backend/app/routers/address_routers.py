@@ -1,7 +1,12 @@
 from fastapi import APIRouter, HTTPException, status
 
 from app.core.depedencies import AddressServiceDependency
-from app.schema.address_schema import AddressCreateRequest, AddressCreateResponse
+from app.schema.address_schema import (
+    AddressCreateRequest,
+    AddressCreateResponse,
+    AddressDeleteRequest,
+    AddressDeleteResponse,
+)
 from app.service.address_service import (
     AddressCreateError,
     AddressValidationError,
@@ -34,3 +39,16 @@ async def create_address(
         ) from exc
 
     return AddressCreateResponse(data=address_create_id)
+
+
+@router.delete(
+    "/delete",
+    response_model=AddressDeleteResponse,
+    status_code=status.HTTP_200_OK,
+    summary="删除收货地址",
+)
+async def delete_address(
+    request: AddressDeleteRequest,
+    address_service: AddressServiceDependency,
+) -> AddressDeleteResponse:
+    return await address_service.delete_address(request)

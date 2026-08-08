@@ -9,7 +9,10 @@ from app.core.lifespan import lifespan
 class LifespanTests(unittest.IsolatedAsyncioTestCase):
     async def test_connects_and_closes_mongodb(self) -> None:
         app = FastAPI()
-        database = object()
+        collection = Mock()
+        collection.create_index = AsyncMock(return_value="uniq_address_id")
+        database = Mock()
+        database.get_collection.return_value = collection
         client = Mock()
         client.admin.command = AsyncMock()
         client.close = AsyncMock()
@@ -20,6 +23,11 @@ class LifespanTests(unittest.IsolatedAsyncioTestCase):
                 client.admin.command.assert_awaited_once_with("ping")
                 self.assertIs(app.state.mongo_client, client)
                 self.assertIs(app.state.mongo_database, database)
+                collection.create_index.assert_awaited_once_with(
+                    "address_id",
+                    unique=True,
+                    name="uniq_address_id",
+                )
 
         client.close.assert_awaited_once_with()
 

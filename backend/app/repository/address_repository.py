@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from bson import ObjectId
 from pymongo.asynchronous.database import AsyncDatabase
 
@@ -12,3 +14,11 @@ class AddressRepository:
         result = await self._collection.insert_one(address_data)
 
         return result.inserted_id
+
+    async def delete_address(self, address_id: UUID) -> None:
+        """按业务 UUID 删除地址记录。"""
+
+        await self._collection.delete_one(
+            {"address_id": str(address_id)},
+            hint="uniq_address_id",
+        )
