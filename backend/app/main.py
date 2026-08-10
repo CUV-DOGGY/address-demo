@@ -1,21 +1,15 @@
-import os
 import app.core.logger
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.core.config import settings
 from app.core.exception_handlers import register_exception_handlers
 from app.core.lifespan import lifespan
 from app.routers.address_routers import router as address_router
 
 
 def get_allowed_origins() -> list[str]:
-    configured_origins = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
-    origins = [
-        origin.strip() for origin in configured_origins.split(",") if origin.strip()
-    ]
-    if "*" in origins:
-        raise ValueError("FRONTEND_ORIGIN must contain explicit origins, not '*'")
-    return origins
+    return settings.frontend_origins
 
 
 app = FastAPI(title="地图功能demo API", lifespan=lifespan)
@@ -25,7 +19,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=get_allowed_origins(),
     allow_credentials=False,
-    allow_methods=["GET", "POST", "DELETE"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE"],
     allow_headers=["Accept", "Content-Type"],
 )
 

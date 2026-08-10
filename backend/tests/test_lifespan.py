@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock, call, patch
 
 from fastapi import FastAPI
 
@@ -23,10 +23,23 @@ class LifespanTests(unittest.IsolatedAsyncioTestCase):
                 client.admin.command.assert_awaited_once_with("ping")
                 self.assertIs(app.state.mongo_client, client)
                 self.assertIs(app.state.mongo_database, database)
-                collection.create_index.assert_awaited_once_with(
-                    "address_id",
-                    unique=True,
-                    name="uniq_address_id",
+                collection.create_index.assert_has_awaits(
+                    [
+                        call(
+                            "address_id",
+                            unique=True,
+                            name="uniq_address_id",
+                        ),
+                        call(
+                            "user_id",
+                            unique=True,
+                            partialFilterExpression={
+                                "status": "active",
+                                "is_default": True,
+                            },
+                            name="uniq_active_default_address_per_user",
+                        ),
+                    ]
                 )
 
         client.close.assert_awaited_once_with()

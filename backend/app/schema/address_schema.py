@@ -1,9 +1,17 @@
 import re
+from datetime import datetime
 from decimal import Decimal
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 COORDINATE_NUMBER_PATTERN = re.compile(r"^-?(?:0|[1-9]\d*)(?:\.\d{1,6})?$")
 
@@ -84,15 +92,28 @@ class Address(BaseModel):
     """数据库中的完整地址信息。"""
 
     address_id: UUID
+    user_id: UUID
     receiver_name: str
     phone_number: str
-    shipping_address: str
+    display_address: str = Field(
+        ...,
+        validation_alias=AliasChoices("display_address", "shipping_address"),
+        description="用户确认的展示别名，不作为规范地址依据",
+    )
     detail_address: str
     location: AddressLocation
     is_default: bool
-    is_delete: bool
-    formatted_address: str
+    status: Literal["active", "deleted"]
+    version: int = Field(..., ge=1)
+    canonical_address: str = Field(
+        ...,
+        validation_alias=AliasChoices("canonical_address", "formatted_address"),
+        description="由高德解析得到的规范地址",
+    )
     adcode: str
+    deleted_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
 
 
 class AddressCreateRequest(BaseModel):
@@ -105,7 +126,7 @@ class AddressCreateRequest(BaseModel):
             "example": {
                 "receiver_name": "张三",
                 "phone_number": "13800138000",
-                "shipping_address": "广东省深圳市南山区科技园",
+                "display_address": "科技园",
                 "detail_address": "某某大厦 10 楼 1001 室",
                 "location": {
                     "source": "poi",
@@ -129,11 +150,12 @@ class AddressCreateRequest(BaseModel):
         pattern=r"^1[3-9]\d{9}$",
         description="中国大陆 11 位手机号码",
     )
-    shipping_address: str = Field(
+    display_address: str = Field(
         ...,
         min_length=1,
         max_length=255,
-        description="地图选点得到的收货地址",
+        validation_alias=AliasChoices("display_address", "shipping_address"),
+        description="用户确认的展示别名；规范地址以后端高德解析结果为准",
     )
     detail_address: str = Field(
         ...,
@@ -201,13 +223,61 @@ class AddressDeleteResponse(BaseModel):
     data: None = Field(default=None, description="删除接口无返回数据")
 
 
+class AddressUpdateRequest(BaseModel):
+    """部分更新收货地址的请求模型。"""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    address_id: UUID = Field(..., description="待更新地址的 UUID")
+    receiver_name: str | None = Field(default=None, min_length=1, max_length=50)
+    phone_number: str | None = Field(default=None, pattern=r"^1[3-9]\d{9}$")
+    detail_address: str | None = Field(default=None, min_length=1, max_length=255)
+    display_address: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=255,
+        validation_alias=AliasChoices("display_address", "shipping_address"),
+        description="用户确认的展示别名；不会改变高德规范地址",
+    )
+    is_default: bool | None = Field(default=None, description="是否设为默认地址")
+
+    @model_validator(mode="after")
+    def require_update_fields(self) -> "AddressUpdateRequest":
+        if all(
+            value is None
+            for value in (
+                self.receiver_name,
+                self.phone_number,
+                self.detail_address,
+                self.display_address,
+                self.is_default,
+            )
+        ):
+            raise ValueError("至少需要提供一个可更新字段")
+        return self
+
+
+class AddressUpdateResponseData(BaseModel):
+    """更新成功后的地址版本信息。"""
+
+    address_id: UUID
+    version: int = Field(..., ge=1)
+
+
+class AddressUpdateResponse(BaseModel):
+    """部分更新收货地址成功时的统一响应模型。"""
+
+    code: Literal[200] = Field(default=200, description="业务状态码")
+    message: str = Field(default="地址更新成功", description="响应消息")
+    data: AddressUpdateResponseData
+
+
 class AddressValidData(BaseModel):
 
     model_config = ConfigDict(
+        extra="forbid",
         json_schema_extra={
             "example": {
-                "shipping_address": "广东省深圳市南山区科技园",
-                "detail_address": "某某大厦 10 楼 1001 室",
                 "location": {
                     "source": "poi",
                     "coordinate": "113.934528, 22.540503",
@@ -215,21 +285,9 @@ class AddressValidData(BaseModel):
                     "amap_poi_id": "B0XXXXXX",
                 },
             }
-        }
-    )
-    shipping_address: str = Field(
-        ...,
-        min_length=1,
-        max_length=255,
-        description="地图选点得到的收货地址",
-    )
-    detail_address: str = Field(
-        ...,
-        min_length=1,
-        max_length=255,
-        description="门牌号、楼层、房间号等详细地址",
+        },
     )
     location: AddressLocation = Field(
         ...,
-        description="经过高德解析并由用户确认的位置",
+        description="需要通过高德服务校验的位置",
     )

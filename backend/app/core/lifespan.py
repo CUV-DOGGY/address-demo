@@ -28,6 +28,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             unique=True,
             name="uniq_address_id",
         )
+        await app.state.mongo_database.get_collection("addresses").create_index(
+            "user_id",
+            unique=True,
+            partialFilterExpression={
+                "status": "active",
+                "is_default": True,
+            },
+            name="uniq_active_default_address_per_user",
+        )
         logger.info("MongoDB connected: database=%s", settings.MONGODB_DATABASE)
 
         yield

@@ -4,6 +4,8 @@ from pydantic import ValidationError
 
 from app.schema.address_schema import (
     AddressCreateRequest,
+    AddressLocationUpdateRequest,
+    AddressUpdateRequest,
     PoiAddressLocation,
     PositionAddressLocation,
 )
@@ -13,7 +15,7 @@ def make_request_payload() -> dict[str, object]:
     return {
         "receiver_name": "张三",
         "phone_number": "13800138000",
-        "shipping_address": "广东省深圳市南山区白石路",
+        "display_address": "白石路附近",
         "detail_address": "9 栋 B 座 1001 室",
         "location": {
             "source": "poi",
@@ -28,10 +30,56 @@ class AddressCreateRequestTests(unittest.TestCase):
     def test_accepts_valid_poi_location(self) -> None:
         request = AddressCreateRequest.model_validate(make_request_payload())
 
+        self.assertEqual(request.display_address, "白石路附近")
         self.assertIsInstance(request.location, PoiAddressLocation)
         self.assertEqual(request.location.amap_poi_id, "B0XXXXXX")
         self.assertEqual(request.location.coordinate, "113.946123,22.530456")
         self.assertFalse(request.is_default)
+
+    def test_accepts_legacy_shipping_address_as_display_alias(self) -> None:
+        payload = make_request_payload()
+        payload["shipping_address"] = payload.pop("display_address")
+
+        request = AddressCreateRequest.model_validate(payload)
+
+        self.assertEqual(request.display_address, "白石路附近")
+
+    def test_rejects_client_supplied_canonical_address(self) -> None:
+        payload = make_request_payload()
+        payload["canonical_address"] = "客户端伪造的规范地址"
+
+        with self.assertRaises(ValidationError):
+            AddressCreateRequest.model_validate(payload)
+
+    def test_profile_update_rejects_location_and_default_fields(self) -> None:
+        forbidden_fields: tuple[tuple[str, object], ...] = (
+            ("location", make_request_payload()["location"]),
+            ("canonical_address", "客户端伪造地址"),
+            ("adcode", "440305"),
+            ("is_default", True),
+        )
+
+        for field, value in forbidden_fields:
+            with self.subTest(field=field):
+                with self.assertRaises(ValidationError):
+                    AddressUpdateRequest.model_validate(
+                        {
+                            "expected_version": 1,
+                            "receiver_name": "李四",
+                            field: value,
+                        }
+                    )
+
+    def test_location_update_rejects_client_supplied_canonical_address(self) -> None:
+        payload = {
+            "expected_version": 1,
+            "display_address": "公司前台",
+            "location": make_request_payload()["location"],
+            "canonical_address": "客户端伪造地址",
+        }
+
+        with self.assertRaises(ValidationError):
+            AddressLocationUpdateRequest.model_validate(payload)
 
     def test_poi_location_requires_poi_id(self) -> None:
         payload = make_request_payload()

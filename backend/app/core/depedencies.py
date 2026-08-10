@@ -63,11 +63,13 @@ AddressRepositoryDependency = Annotated[
 
 
 def get_address_service(
-    repository: AddressRepositoryDependency, addressvalidation: AddressValidationDedency
+    repository: AddressRepositoryDependency,
+    addressvalidation: AddressValidationDedency,
+    database: MongoDatabaseDependency,
 ) -> AddressService:
     """通过依赖注入创建地址服务。"""
 
-    return AddressService(repository, addressvalidation)
+    return AddressService(repository, addressvalidation, database)
 
 
 AddressServiceDependency = Annotated[AddressService, Depends(get_address_service)]

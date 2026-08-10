@@ -1,5 +1,6 @@
 import unittest
 from unittest.mock import AsyncMock
+from uuid import uuid4
 
 from fastapi import HTTPException
 
@@ -21,7 +22,7 @@ def make_request() -> AddressCreateRequest:
         {
             "receiver_name": "张三",
             "phone_number": "13800138000",
-            "shipping_address": "广东省深圳市南山区科技园",
+            "display_address": "科技园",
             "detail_address": "某大厦 1001 室",
             "location": {
                 "source": "poi",
@@ -46,7 +47,7 @@ class AddressRouterExceptionTests(unittest.IsolatedAsyncioTestCase):
                 service.create_address.side_effect = service_error
 
                 with self.assertRaises(HTTPException) as context:
-                    await create_address(make_request(), service)
+                    await create_address(make_request(), uuid4(), service)
 
                 self.assertEqual(context.exception.status_code, expected_status)
                 self.assertEqual(context.exception.detail, str(service_error))
@@ -66,7 +67,7 @@ class AddressRouterExceptionTests(unittest.IsolatedAsyncioTestCase):
                 service.create_address.side_effect = service_error
 
                 with self.assertRaises(type(service_error)):
-                    await create_address(make_request(), service)
+                    await create_address(make_request(), uuid4(), service)
 
 
 if __name__ == "__main__":

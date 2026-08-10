@@ -71,7 +71,13 @@ Copy-Item frontend\.env.example frontend\.env.local
 VITE_API_BASE_URL=http://localhost:8000
 ```
 
-后端为保持依赖最少，当前直接读取 PowerShell 进程变量，不自动解析 `.env` 文件。默认只允许 `http://localhost:5173`：
+后端会自动读取 `backend/.env`，系统环境变量优先于文件配置。先从示例复制一份：
+
+```powershell
+Copy-Item backend\.env.example backend\.env
+```
+
+`FRONTEND_ORIGIN` 支持用英文逗号分隔多个明确来源，默认示例为 `http://localhost:5173`，不允许使用 `*`。也可以通过 PowerShell 临时覆盖：
 
 ```powershell
 $env:FRONTEND_ORIGIN = "http://localhost:5173"

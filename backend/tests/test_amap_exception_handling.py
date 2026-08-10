@@ -1,5 +1,6 @@
 import unittest
 from unittest.mock import AsyncMock, Mock
+from uuid import uuid4
 
 import httpx
 
@@ -27,7 +28,7 @@ def make_request() -> AddressCreateRequest:
         {
             "receiver_name": "张三",
             "phone_number": "13800138000",
-            "shipping_address": "广东省深圳市南山区科技园",
+            "display_address": "科技园",
             "detail_address": "某大厦 1001 室",
             "location": {
                 "source": "poi",
@@ -120,13 +121,13 @@ class AddressServiceAmapExceptionTests(unittest.IsolatedAsyncioTestCase):
         self.repository = Mock()
         self.validation = Mock()
         self.validation.address_validation = AsyncMock()
-        self.service = AddressService(self.repository, self.validation)
+        self.service = AddressService(self.repository, self.validation, Mock())
 
     async def test_converts_amap_address_fetch_error(self) -> None:
         self.validation.address_validation.side_effect = AmapAddressFetchError()
 
         with self.assertRaisesRegex(AddressFetchError, "高德地址获取失败"):
-            await self.service.create_address(make_request())
+            await self.service.create_address(make_request(), uuid4())
 
         self.repository.create_address.assert_not_called()
 
@@ -134,7 +135,7 @@ class AddressServiceAmapExceptionTests(unittest.IsolatedAsyncioTestCase):
         self.validation.address_validation.side_effect = AmapServiceTimeoutError()
 
         with self.assertRaisesRegex(AddressServiceTimeoutError, "高德服务超时"):
-            await self.service.create_address(make_request())
+            await self.service.create_address(make_request(), uuid4())
 
         self.repository.create_address.assert_not_called()
 
@@ -142,7 +143,7 @@ class AddressServiceAmapExceptionTests(unittest.IsolatedAsyncioTestCase):
         self.validation.address_validation.side_effect = AmapAddressNotFoundError()
 
         with self.assertRaisesRegex(AddressNotFoundError, "未获取到有效地址"):
-            await self.service.create_address(make_request())
+            await self.service.create_address(make_request(), uuid4())
 
         self.repository.create_address.assert_not_called()
 
@@ -152,7 +153,7 @@ class AddressServiceAmapExceptionTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(
             AddressProviderConfigurationError, "地址服务配置错误"
         ):
-            await self.service.create_address(make_request())
+            await self.service.create_address(make_request(), uuid4())
 
         self.repository.create_address.assert_not_called()
 
@@ -162,7 +163,7 @@ class AddressServiceAmapExceptionTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(
             AddressServiceUnavailableError, "地址服务暂时不可用"
         ):
-            await self.service.create_address(make_request())
+            await self.service.create_address(make_request(), uuid4())
 
         self.repository.create_address.assert_not_called()
 
