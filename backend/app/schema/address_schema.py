@@ -230,6 +230,12 @@ class AddressUpdateRequest(BaseModel):
     address_id: UUID = Field(..., description="待更新地址的 UUID")
     receiver_name: str | None = Field(default=None, min_length=1, max_length=50)
     phone_number: str | None = Field(default=None, pattern=r"^1[3-9]\d{9}$")
+    display_address: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=255,
+        description="用户确认的展示别名；不会改变高德规范地址",
+    )
     detail_address: str | None = Field(default=None, min_length=1, max_length=255)
     is_default: bool | None = Field(default=None, description="是否设为默认地址")
     location: AddressLocation | None = None
@@ -241,6 +247,7 @@ class AddressUpdateRequest(BaseModel):
             for value in (
                 self.receiver_name,
                 self.phone_number,
+                self.display_address,
                 self.detail_address,
                 self.is_default,
                 self.location,
@@ -256,6 +263,7 @@ class AddressUpdateResponseData(BaseModel):
     address_id: UUID = Field(..., description="待更新地址的 UUID")
     receiver_name: str | None = Field(default=None, min_length=1, max_length=50)
     phone_number: str | None = Field(default=None, pattern=r"^1[3-9]\d{9}$")
+    display_address: str | None = Field(default=None, min_length=1, max_length=255)
     detail_address: str | None = Field(default=None, min_length=1, max_length=255)
     is_default: bool | None = Field(default=None, description="是否设为默认地址")
     location: AddressLocation | None = None

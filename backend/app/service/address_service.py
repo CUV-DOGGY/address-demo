@@ -234,7 +234,9 @@ class AddressService:
                 current_status,
                 current_version,
                 _,
-            ) = await self.get_address_status_and_version(request.address_id, user_id)
+            ) = await self.get_address_status_and_version_and_is_default(
+                request.address_id, user_id
+            )
             if current_status == "deleted":
                 return AddressDeleteResponse()
             if current_version != address_version:
@@ -335,8 +337,8 @@ class AddressService:
         )
         if request.location is not None:
             try:
-                resolved_location = (
-                    await self._addressvalidation.address_validation(request.location)
+                resolved_location = await self._addressvalidation.address_validation(
+                    request.location
                 )
             except (AddressLocationError, AddressAcodeError) as exc:
                 raise AddressValidationError("地址数据不正确") from exc
@@ -355,31 +357,40 @@ class AddressService:
             update_data["canonical_address"] = resolved_location.formatted_address
             update_data["adcode"] = resolved_location.adcode
 
-        async def operation(session: object) -> bool:
-            if request.is_default is True:
+        if request.is_default is True and not is_default:
+
+            async def operation(session: object) -> bool:
                 await self._repository.clear_other_default_addresses(
                     user_id,
                     session,
                     except_address_id=request.address_id,
                 )
 
+                update_succeeded = await self._repository.update_address(
+                    request.address_id,
+                    user_id,
+                    address_version,
+                    is_default,
+                    update_data,
+                    session=session,
+                )
+                if not update_succeeded:
+                    raise _AddressDefaultTransactionAborted
+                return True
+
+            try:
+                async with self._database.client.start_session() as session:
+                    update_succeeded = await session.with_transaction(operation)
+            except _AddressDefaultTransactionAborted:
+                update_succeeded = False
+        else:
             update_succeeded = await self._repository.update_address(
                 request.address_id,
                 user_id,
                 address_version,
                 is_default,
                 update_data,
-                session=session,
             )
-            if not update_succeeded:
-                raise _AddressDefaultTransactionAborted
-            return True
-
-        try:
-            async with self._database.client.start_session() as session:
-                update_succeeded = await session.with_transaction(operation)
-        except _AddressDefaultTransactionAborted:
-            update_succeeded = False
 
         if not update_succeeded:
             (

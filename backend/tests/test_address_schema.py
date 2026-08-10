@@ -1,10 +1,10 @@
 import unittest
+from uuid import uuid4
 
 from pydantic import ValidationError
 
 from app.schema.address_schema import (
     AddressCreateRequest,
-    AddressLocationUpdateRequest,
     AddressUpdateRequest,
     PoiAddressLocation,
     PositionAddressLocation,
@@ -51,12 +51,25 @@ class AddressCreateRequestTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             AddressCreateRequest.model_validate(payload)
 
-    def test_profile_update_rejects_location_and_default_fields(self) -> None:
+    def test_update_accepts_location_and_default_fields(self) -> None:
+        address_id = uuid4()
+
+        request = AddressUpdateRequest.model_validate(
+            {
+                "address_id": str(address_id),
+                "location": make_request_payload()["location"],
+                "is_default": True,
+            }
+        )
+
+        self.assertEqual(request.address_id, address_id)
+        self.assertIsInstance(request.location, PoiAddressLocation)
+        self.assertTrue(request.is_default)
+
+    def test_update_rejects_server_owned_address_fields(self) -> None:
         forbidden_fields: tuple[tuple[str, object], ...] = (
-            ("location", make_request_payload()["location"]),
             ("canonical_address", "客户端伪造地址"),
             ("adcode", "440305"),
-            ("is_default", True),
         )
 
         for field, value in forbidden_fields:
@@ -64,22 +77,15 @@ class AddressCreateRequestTests(unittest.TestCase):
                 with self.assertRaises(ValidationError):
                     AddressUpdateRequest.model_validate(
                         {
-                            "expected_version": 1,
+                            "address_id": str(uuid4()),
                             "receiver_name": "李四",
                             field: value,
                         }
                     )
 
-    def test_location_update_rejects_client_supplied_canonical_address(self) -> None:
-        payload = {
-            "expected_version": 1,
-            "display_address": "公司前台",
-            "location": make_request_payload()["location"],
-            "canonical_address": "客户端伪造地址",
-        }
-
+    def test_update_requires_at_least_one_update_field(self) -> None:
         with self.assertRaises(ValidationError):
-            AddressLocationUpdateRequest.model_validate(payload)
+            AddressUpdateRequest.model_validate({"address_id": str(uuid4())})
 
     def test_poi_location_requires_poi_id(self) -> None:
         payload = make_request_payload()

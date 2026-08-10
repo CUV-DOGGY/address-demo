@@ -10,7 +10,6 @@ from app.amap.models import AmapResolvedLocation
 from app.schema.address_schema import (
     AddressCreateRequest,
     AddressCreateResponseData,
-    AddressValidData,
 )
 from app.service.address_service import (
     AddressCreateError,
@@ -90,9 +89,9 @@ class AddressServiceTests(unittest.IsolatedAsyncioTestCase):
             datetime_mock.now.return_value = updated_at
             response = await self.service.create_address(request, user_id)
 
-        validation_data = self.address_validation.address_validation.call_args.args[0]
-        self.assertIsInstance(validation_data, AddressValidData)
-        self.assertEqual(validation_data.location, request.location)
+        self.address_validation.address_validation.assert_awaited_once_with(
+            request.location
+        )
         self.repository.clear_other_default_addresses.assert_awaited_once_with(
             user_id,
             self.session,

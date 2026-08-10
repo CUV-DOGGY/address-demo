@@ -13,7 +13,7 @@ class CorsTests(unittest.IsolatedAsyncioTestCase):
             base_url="http://testserver",
         ) as client:
             response = await client.options(
-                "/addresses/550e8400-e29b-41d4-a716-446655440000",
+                "/addresses/update",
                 headers={
                     "Origin": get_allowed_origins()[0],
                     "Access-Control-Request-Method": "PATCH",
@@ -27,7 +27,7 @@ class CorsTests(unittest.IsolatedAsyncioTestCase):
             response.headers["access-control-allow-methods"],
         )
 
-    async def test_allows_put_preflight_for_location_updates(self) -> None:
+    async def test_rejects_unsupported_put_preflight(self) -> None:
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(
             transport=transport,
@@ -42,8 +42,8 @@ class CorsTests(unittest.IsolatedAsyncioTestCase):
                 },
             )
 
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(
+        self.assertEqual(response.status_code, 400)
+        self.assertNotIn(
             "PUT",
             response.headers["access-control-allow-methods"],
         )
