@@ -227,19 +227,12 @@ class AddressUpdateRequest(BaseModel):
     """部分更新收货地址的请求模型。"""
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
-
     address_id: UUID = Field(..., description="待更新地址的 UUID")
     receiver_name: str | None = Field(default=None, min_length=1, max_length=50)
     phone_number: str | None = Field(default=None, pattern=r"^1[3-9]\d{9}$")
     detail_address: str | None = Field(default=None, min_length=1, max_length=255)
-    display_address: str | None = Field(
-        default=None,
-        min_length=1,
-        max_length=255,
-        validation_alias=AliasChoices("display_address", "shipping_address"),
-        description="用户确认的展示别名；不会改变高德规范地址",
-    )
     is_default: bool | None = Field(default=None, description="是否设为默认地址")
+    location: AddressLocation | None = None
 
     @model_validator(mode="after")
     def require_update_fields(self) -> "AddressUpdateRequest":
@@ -249,8 +242,8 @@ class AddressUpdateRequest(BaseModel):
                 self.receiver_name,
                 self.phone_number,
                 self.detail_address,
-                self.display_address,
                 self.is_default,
+                self.location,
             )
         ):
             raise ValueError("至少需要提供一个可更新字段")
@@ -260,8 +253,12 @@ class AddressUpdateRequest(BaseModel):
 class AddressUpdateResponseData(BaseModel):
     """更新成功后的地址版本信息。"""
 
-    address_id: UUID
-    version: int = Field(..., ge=1)
+    address_id: UUID = Field(..., description="待更新地址的 UUID")
+    receiver_name: str | None = Field(default=None, min_length=1, max_length=50)
+    phone_number: str | None = Field(default=None, pattern=r"^1[3-9]\d{9}$")
+    detail_address: str | None = Field(default=None, min_length=1, max_length=255)
+    is_default: bool | None = Field(default=None, description="是否设为默认地址")
+    location: AddressLocation | None = None
 
 
 class AddressUpdateResponse(BaseModel):

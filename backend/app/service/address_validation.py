@@ -21,12 +21,12 @@ class AddressValidation:
     def __init__(self, amap_client: AmapClient) -> None:
         self._amap_client = amap_client
 
-    async def address_validation(
-        self, addressvaliddata: AddressValidData
-    ) -> AmapResolvedLocation:
+    async def address_validation(self, addressdata) -> AmapResolvedLocation:
         """Verify the submitted location against current Amap data."""
 
-        location = addressvaliddata.location
+        if not isinstance(addressdata, AddressValidData):
+            addressdata = AddressValidData(location=addressdata)
+        location = addressdata.location
         if location.source == "position":
             resolved_location = await self._amap_client.reverse_geocode(
                 location.coordinate

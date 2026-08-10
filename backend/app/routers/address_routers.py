@@ -98,6 +98,7 @@ async def create_address(
 @router.patch(
     "/update",
     response_model=AddressUpdateResponse,
+    response_model_exclude_none=True,
     status_code=status.HTTP_200_OK,
     summary="部分更新收货地址",
 )
@@ -111,6 +112,11 @@ async def update_address(
     except AddressGetError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except AddressValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(exc),
         ) from exc
     except (AddressStateConflictError, AddressVersionConflictError) as exc:

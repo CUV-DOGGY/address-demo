@@ -113,12 +113,9 @@ class AddressService:
     ) -> AddressCreateResponseData:
         """校验并创建用户的收货地址。"""
 
-        validation_data = AddressValidData(
-            location=request.location,
-        )
         try:
             resolved_location = await self._addressvalidation.address_validation(
-                validation_data
+                request.location
             )
         except (AddressLocationError, AddressAcodeError) as exc:
             raise AddressValidationError("地址数据不正确") from exc
@@ -147,6 +144,7 @@ class AddressService:
             "status": "active",
             "version": 1,
             "canonical_address": resolved_location.formatted_address,
+            "adcode": resolved_location.adcode,
             "deleted_at": None,
             "created_at": now,
             "updated_at": now,
@@ -278,12 +276,7 @@ class AddressService:
         except _AddressDefaultTransactionAborted:
             return None
 
-    async def _set_default_address(
-        self,
-        address_id: UUID,
-        user_id: UUID,
-        update_data: dict[str, object],
-    ) -> bool:
+    async def _set_default_address(self, address_id: UUID, user_id: UUID) -> bool:
         """在事务中取消旧默认地址并原子地设定新的默认地址。"""
 
         (
@@ -328,48 +321,88 @@ class AddressService:
             address_status,
             address_version,
             is_default,
-        ) = await self.get_address_status_and_version(request.address_id, user_id)
+        ) = await self.get_address_status_and_version_and_is_default(
+            request.address_id,
+            user_id,
+        )
         if address_status == "deleted":
             raise AddressStateConflictError("地址已被删除")
 
         update_data = request.model_dump(
             exclude={"address_id"},
+            exclude_unset=True,
             exclude_none=True,
         )
-        if request.is_default is True and not is_default:
-            update_succeeded = await self._set_default_address(
-                request.address_id,
-                user_id,
-                address_version,
-                {
-                    field: value
-                    for field, value in update_data.items()
-                    if field != "is_default"
-                },
-            )
-        else:
+        if request.location is not None:
+            try:
+                resolved_location = (
+                    await self._addressvalidation.address_validation(request.location)
+                )
+            except (AddressLocationError, AddressAcodeError) as exc:
+                raise AddressValidationError("地址数据不正确") from exc
+            except AmapServiceTimeoutError as exc:
+                raise AddressServiceTimeoutError("高德服务超时") from exc
+            except AmapServiceUnavailableError as exc:
+                raise AddressServiceUnavailableError("地址服务暂时不可用") from exc
+            except AmapConfigurationError as exc:
+                raise AddressProviderConfigurationError("地址服务配置错误") from exc
+            except AmapAddressNotFoundError as exc:
+                raise AddressNotFoundError("未获取到有效地址") from exc
+            except AmapAddressFetchError as exc:
+                raise AddressFetchError("高德地址获取失败") from exc
+
+            update_data["location"] = request.location.model_dump()
+            update_data["canonical_address"] = resolved_location.formatted_address
+            update_data["adcode"] = resolved_location.adcode
+
+        async def operation(session: object) -> bool:
+            if request.is_default is True:
+                await self._repository.clear_other_default_addresses(
+                    user_id,
+                    session,
+                    except_address_id=request.address_id,
+                )
+
             update_succeeded = await self._repository.update_address(
                 request.address_id,
                 user_id,
                 address_version,
                 is_default,
                 update_data,
+                session=session,
             )
-        if update_succeeded:
-            return AddressUpdateResponse(
-                data=AddressUpdateResponseData(
-                    address_id=request.address_id,
-                    version=address_version + 1,
-                )
-            )
+            if not update_succeeded:
+                raise _AddressDefaultTransactionAborted
+            return True
 
-        (
-            current_status,
-            current_version,
-            _,
-        ) = await self.get_address_status_and_version(request.address_id, user_id)
-        if current_status == "deleted":
-            raise AddressStateConflictError("地址已被删除")
-        if current_version != address_version:
-            raise AddressVersionConflictError("原地址已被修改")
-        raise AddressUpdateError("地址更新失败")
+        try:
+            async with self._database.client.start_session() as session:
+                update_succeeded = await session.with_transaction(operation)
+        except _AddressDefaultTransactionAborted:
+            update_succeeded = False
+
+        if not update_succeeded:
+            (
+                current_status,
+                current_version,
+                _,
+            ) = await self.get_address_status_and_version_and_is_default(
+                request.address_id,
+                user_id,
+            )
+            if current_status == "deleted":
+                raise AddressStateConflictError("地址已被删除")
+            if current_version != address_version:
+                raise AddressVersionConflictError("原地址已被修改")
+            raise AddressUpdateError("地址更新失败")
+
+        return AddressUpdateResponse(
+            data=AddressUpdateResponseData(
+                address_id=request.address_id,
+                **request.model_dump(
+                    exclude={"address_id"},
+                    exclude_unset=True,
+                    exclude_none=True,
+                ),
+            )
+        )
