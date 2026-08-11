@@ -2,8 +2,7 @@ import unittest
 from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
-from fastapi import HTTPException
-
+from app.main import app
 from app.repository.address_repository import AddressRepository
 from app.routers.address_routers import delete_address
 from app.schema.address_schema import AddressDeleteRequest, AddressDeleteResponse
@@ -18,16 +17,37 @@ from app.service.address_service import (
 
 class AddressDeleteTests(unittest.IsolatedAsyncioTestCase):
     async def test_router_delegates_to_service(self) -> None:
-        request = AddressDeleteRequest(address_id=uuid4())
+        address_id = uuid4()
+        request = AddressDeleteRequest(address_id=address_id)
         user_id = uuid4()
         expected_response = AddressDeleteResponse()
         service = Mock()
         service.delete_address = AsyncMock(return_value=expected_response)
 
-        response = await delete_address(request, user_id, service)
+        response = await delete_address(address_id, user_id, service)
 
         service.delete_address.assert_awaited_once_with(request, user_id)
         self.assertEqual(response, expected_response)
+
+    def test_delete_route_uses_address_id_path_parameter(self) -> None:
+        openapi = app.openapi()
+
+        self.assertNotIn("/addresses/delete", openapi["paths"])
+        operation = openapi["paths"]["/addresses/{address_id}"]["delete"]
+        self.assertNotIn("requestBody", operation)
+        self.assertIn(
+            {
+                "name": "address_id",
+                "in": "path",
+                "required": True,
+                "schema": {
+                    "type": "string",
+                    "format": "uuid",
+                    "title": "Address Id",
+                },
+            },
+            operation["parameters"],
+        )
 
     async def test_service_gets_status_and_version_before_deleting(self) -> None:
         request = AddressDeleteRequest(address_id=uuid4())
@@ -177,26 +197,23 @@ class AddressDeleteTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(AddressDeleteError, "地址删除失败"):
             await service.delete_address(request, user_id)
 
-    async def test_router_maps_delete_errors_to_http_statuses(self) -> None:
-        request = AddressDeleteRequest(address_id=uuid4())
+    async def test_router_propagates_delete_errors_to_global_handler(self) -> None:
+        address_id = uuid4()
         user_id = uuid4()
-        cases = (
-            (AddressGetError("地址不存在或无权操作"), 404),
-            (AddressDataIntegrityError("地址数据异常"), 500),
-            (AddressVersionConflictError("原地址已被修改"), 409),
-            (AddressDeleteError("地址删除失败"), 500),
+        service_errors = (
+            AddressGetError("地址不存在或无权操作"),
+            AddressDataIntegrityError("地址数据异常"),
+            AddressVersionConflictError("原地址已被修改"),
+            AddressDeleteError("地址删除失败"),
         )
 
-        for service_error, expected_status in cases:
+        for service_error in service_errors:
             with self.subTest(service_error=type(service_error).__name__):
                 service = Mock()
                 service.delete_address = AsyncMock(side_effect=service_error)
 
-                with self.assertRaises(HTTPException) as context:
-                    await delete_address(request, user_id, service)
-
-                self.assertEqual(context.exception.status_code, expected_status)
-                self.assertEqual(context.exception.detail, str(service_error))
+                with self.assertRaises(type(service_error)):
+                    await delete_address(address_id, user_id, service)
 
 
 if __name__ == "__main__":

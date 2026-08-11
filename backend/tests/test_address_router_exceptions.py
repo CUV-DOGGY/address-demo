@@ -2,8 +2,6 @@ import unittest
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
-from fastapi import HTTPException
-
 from app.routers.address_routers import create_address
 from app.schema.address_schema import AddressCreateRequest
 from app.service.address_service import (
@@ -35,25 +33,10 @@ def make_request() -> AddressCreateRequest:
 
 
 class AddressRouterExceptionTests(unittest.IsolatedAsyncioTestCase):
-    async def test_maps_route_owned_errors_to_http_status_codes(self) -> None:
+    async def test_propagates_application_errors_to_global_handler(self) -> None:
         cases = (
-            (AddressValidationError("地址数据不正确"), 422),
-            (AddressCreateError("地址创建失败"), 500),
-        )
-
-        for service_error, expected_status in cases:
-            with self.subTest(service_error=type(service_error).__name__):
-                service = AsyncMock()
-                service.create_address.side_effect = service_error
-
-                with self.assertRaises(HTTPException) as context:
-                    await create_address(make_request(), uuid4(), service)
-
-                self.assertEqual(context.exception.status_code, expected_status)
-                self.assertEqual(context.exception.detail, str(service_error))
-
-    async def test_does_not_catch_address_provider_errors(self) -> None:
-        provider_errors = (
+            AddressValidationError("地址数据不正确"),
+            AddressCreateError("地址创建失败"),
             AddressNotFoundError("未获取到有效地址"),
             AddressFetchError("高德地址获取失败"),
             AddressServiceUnavailableError("地址服务暂时不可用"),
@@ -61,7 +44,7 @@ class AddressRouterExceptionTests(unittest.IsolatedAsyncioTestCase):
             AddressProviderConfigurationError("地址服务配置错误"),
         )
 
-        for service_error in provider_errors:
+        for service_error in cases:
             with self.subTest(service_error=type(service_error).__name__):
                 service = AsyncMock()
                 service.create_address.side_effect = service_error

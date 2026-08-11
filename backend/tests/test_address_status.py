@@ -2,11 +2,16 @@ import unittest
 from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
-from fastapi import HTTPException
-
-from app.repository.address_repository import AddressRepository
+from app.repository.address_repository import (
+    AddressRepository,
+    AddressRepositoryDataError,
+)
 from app.routers.address_routers import get_address_status
-from app.service.address_service import AddressService, AddressStatusGetError
+from app.service.address_service import (
+    AddressDataIntegrityError,
+    AddressGetError,
+    AddressService,
+)
 
 
 class AddressStatusTests(unittest.IsolatedAsyncioTestCase):
@@ -41,6 +46,19 @@ class AddressStatusTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsNone(result)
 
+    async def test_repository_rejects_invalid_persisted_status(self) -> None:
+        collection = Mock()
+        collection.find_one = AsyncMock(return_value={"status": "unknown"})
+        database = Mock()
+        database.get_collection.return_value = collection
+        repository = AddressRepository(database)
+
+        with self.assertRaisesRegex(
+            AddressRepositoryDataError,
+            "地址状态字段异常",
+        ):
+            await repository.get_address_status(uuid4(), uuid4())
+
     async def test_service_returns_active_as_a_valid_status(self) -> None:
         address_id = uuid4()
         user_id = uuid4()
@@ -58,7 +76,17 @@ class AddressStatusTests(unittest.IsolatedAsyncioTestCase):
         repository.get_address_status = AsyncMock(return_value=None)
         service = AddressService(repository, Mock(), Mock())
 
-        with self.assertRaisesRegex(AddressStatusGetError, "获取地址状态失败"):
+        with self.assertRaisesRegex(AddressGetError, "地址不存在"):
+            await service.get_address_status(uuid4(), uuid4())
+
+    async def test_service_converts_invalid_status_to_integrity_error(self) -> None:
+        repository = Mock()
+        repository.get_address_status = AsyncMock(
+            side_effect=AddressRepositoryDataError("地址状态字段异常")
+        )
+        service = AddressService(repository, Mock(), Mock())
+
+        with self.assertRaisesRegex(AddressDataIntegrityError, "地址数据异常"):
             await service.get_address_status(uuid4(), uuid4())
 
     async def test_router_accepts_address_id_and_returns_status(self) -> None:
@@ -72,17 +100,14 @@ class AddressStatusTests(unittest.IsolatedAsyncioTestCase):
         service.get_address_status.assert_awaited_once_with(address_id, user_id)
         self.assertEqual(result, "deleted")
 
-    async def test_router_maps_status_error_to_http_500(self) -> None:
+    async def test_router_propagates_status_error_to_global_handler(self) -> None:
         service = Mock()
         service.get_address_status = AsyncMock(
-            side_effect=AddressStatusGetError("获取地址状态失败")
+            side_effect=AddressGetError("地址不存在")
         )
 
-        with self.assertRaises(HTTPException) as context:
+        with self.assertRaisesRegex(AddressGetError, "地址不存在"):
             await get_address_status(uuid4(), uuid4(), service)
-
-        self.assertEqual(context.exception.status_code, 500)
-        self.assertEqual(context.exception.detail, "获取地址状态失败")
 
 
 if __name__ == "__main__":

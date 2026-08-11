@@ -1,7 +1,7 @@
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, status
 
 from app.core.depedencies import AddressServiceDependency, UserIdDependency
 from app.schema.address_schema import (
@@ -13,17 +13,7 @@ from app.schema.address_schema import (
     AddressUpdateRequest,
     AddressUpdateResponse,
 )
-from app.service.address_service import (
-    AddressCreateError,
-    AddressDataIntegrityError,
-    AddressDeleteError,
-    AddressGetError,
-    AddressStatusGetError,
-    AddressStateConflictError,
-    AddressUpdateError,
-    AddressValidationError,
-    AddressVersionConflictError,
-)
+
 
 router = APIRouter(prefix="/addresses", tags=["addresses"])
 
@@ -39,13 +29,7 @@ async def get_address(
     user_id: UserIdDependency,
     address_service: AddressServiceDependency,
 ) -> Address:
-    try:
-        return await address_service.get_address(address_id, user_id)
-    except AddressGetError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(exc),
-        ) from exc
+    return await address_service.get_address(address_id, user_id)
 
 
 @router.get(
@@ -59,13 +43,7 @@ async def get_address_status(
     user_id: UserIdDependency,
     address_service: AddressServiceDependency,
 ) -> Literal["active", "deleted"]:
-    try:
-        return await address_service.get_address_status(address_id, user_id)
-    except AddressStatusGetError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(exc),
-        ) from exc
+    return await address_service.get_address_status(address_id, user_id)
 
 
 @router.post(
@@ -79,19 +57,7 @@ async def create_address(
     user_id: UserIdDependency,
     address_service: AddressServiceDependency,
 ) -> AddressCreateResponse:
-    try:
-        address_create_id = await address_service.create_address(request, user_id)
-    except AddressValidationError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=str(exc),
-        ) from exc
-    except AddressCreateError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(exc),
-        ) from exc
-
+    address_create_id = await address_service.create_address(request, user_id)
     return AddressCreateResponse(data=address_create_id)
 
 
@@ -107,60 +73,19 @@ async def update_address(
     user_id: UserIdDependency,
     address_service: AddressServiceDependency,
 ) -> AddressUpdateResponse:
-    try:
-        return await address_service.update_address(request, user_id)
-    except AddressGetError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(exc),
-        ) from exc
-    except AddressValidationError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=str(exc),
-        ) from exc
-    except (AddressStateConflictError, AddressVersionConflictError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=str(exc),
-        ) from exc
-    except (AddressDataIntegrityError, AddressUpdateError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(exc),
-        ) from exc
+    return await address_service.update_address(request, user_id)
 
 
 @router.delete(
-    "/delete",
+    "/{address_id}",
     response_model=AddressDeleteResponse,
     status_code=status.HTTP_200_OK,
     summary="删除收货地址",
 )
 async def delete_address(
-    request: AddressDeleteRequest,
+    address_id: UUID,
     user_id: UserIdDependency,
     address_service: AddressServiceDependency,
 ) -> AddressDeleteResponse:
-    try:
-        return await address_service.delete_address(request, user_id)
-    except AddressGetError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(exc),
-        ) from exc
-    except AddressDataIntegrityError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(exc),
-        ) from exc
-    except AddressVersionConflictError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=str(exc),
-        ) from exc
-    except AddressDeleteError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(exc),
-        ) from exc
+    request = AddressDeleteRequest(address_id=address_id)
+    return await address_service.delete_address(request, user_id)

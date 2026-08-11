@@ -5,6 +5,10 @@ from bson import ObjectId
 from pymongo.asynchronous.database import AsyncDatabase
 
 
+class AddressRepositoryDataError(RuntimeError):
+    """地址持久化数据不符合仓储层契约。"""
+
+
 class AddressRepository:
     """地址数据访问层契约骨架。"""
 
@@ -73,7 +77,7 @@ class AddressRepository:
         status = address_status.get("status")
         if status in {"active", "deleted"}:
             return status
-        return None
+        raise AddressRepositoryDataError("地址状态字段异常")
 
     async def update_address(
         self,

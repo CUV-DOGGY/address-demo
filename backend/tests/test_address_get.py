@@ -3,12 +3,14 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, Mock
 from uuid import UUID, uuid4
 
-from fastapi import HTTPException
-
 from app.repository.address_repository import AddressRepository
 from app.routers.address_routers import get_address
 from app.schema.address_schema import Address, PoiAddressLocation
-from app.service.address_service import AddressGetError, AddressService
+from app.service.address_service import (
+    AddressDataIntegrityError,
+    AddressGetError,
+    AddressService,
+)
 
 
 def make_address_data(address_id: UUID, user_id: UUID) -> dict[str, object]:
@@ -112,6 +114,20 @@ class AddressGetTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(AddressGetError, "地址不存在"):
             await service.get_address(address_id, user_id)
 
+    async def test_service_converts_invalid_persisted_address_to_integrity_error(
+        self,
+    ) -> None:
+        address_id = uuid4()
+        user_id = uuid4()
+        invalid_address = make_address_data(address_id, user_id)
+        invalid_address.pop("version")
+        repository = Mock()
+        repository.get_address = AsyncMock(return_value=invalid_address)
+        service = AddressService(repository, Mock(), Mock())
+
+        with self.assertRaisesRegex(AddressDataIntegrityError, "地址数据异常"):
+            await service.get_address(address_id, user_id)
+
     async def test_router_accepts_address_id_and_returns_address(self) -> None:
         address_id = uuid4()
         user_id = uuid4()
@@ -125,7 +141,7 @@ class AddressGetTests(unittest.IsolatedAsyncioTestCase):
         service.get_address.assert_awaited_once_with(address_id, user_id)
         self.assertEqual(result, expected)
 
-    async def test_router_maps_get_error_to_http_404(self) -> None:
+    async def test_router_propagates_get_error_to_global_handler(self) -> None:
         address_id = uuid4()
         user_id = uuid4()
         service = Mock()
@@ -133,11 +149,8 @@ class AddressGetTests(unittest.IsolatedAsyncioTestCase):
             side_effect=AddressGetError("地址不存在")
         )
 
-        with self.assertRaises(HTTPException) as context:
+        with self.assertRaisesRegex(AddressGetError, "地址不存在"):
             await get_address(address_id, user_id, service)
-
-        self.assertEqual(context.exception.status_code, 404)
-        self.assertEqual(context.exception.detail, "地址不存在")
 
 
 if __name__ == "__main__":

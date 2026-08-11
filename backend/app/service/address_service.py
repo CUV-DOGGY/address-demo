@@ -2,6 +2,8 @@ from datetime import datetime, timezone
 from typing import Literal
 from uuid import UUID, uuid4
 
+from pydantic import ValidationError
+
 from app.amap.exceptions import (
     AmapAddressFetchError,
     AmapAddressNotFoundError,
@@ -9,7 +11,11 @@ from app.amap.exceptions import (
     AmapServiceTimeoutError,
     AmapServiceUnavailableError,
 )
-from app.repository.address_repository import AddressRepository
+from app.core.exceptions import ApplicationError
+from app.repository.address_repository import (
+    AddressRepository,
+    AddressRepositoryDataError,
+)
 from pymongo.asynchronous.database import AsyncDatabase
 from app.schema.address_schema import (
     Address,
@@ -29,68 +35,114 @@ from app.service.address_validation import (
 )
 
 
-class AddressCreateError(RuntimeError):
+class AddressCreateError(ApplicationError):
     """地址创建失败"""
 
+    error_code = "address_create_failed"
+    public_message = "地址创建失败"
 
-class AddressGetError(RuntimeError):
+
+class AddressGetError(ApplicationError):
     """获取地址信息失败。"""
 
+    status_code = 404
+    error_code = "address_not_found"
+    public_message = "地址不存在"
 
-class AddressStatusGetError(RuntimeError):
-    """获取地址状态失败。"""
 
-
-class AddressDataIntegrityError(RuntimeError):
+class AddressDataIntegrityError(ApplicationError):
     """地址持久化数据不符合预期。"""
 
+    error_code = "address_data_integrity_error"
+    public_message = "地址数据异常"
 
-class AddressVersionConflictError(RuntimeError):
+
+class AddressVersionConflictError(ApplicationError):
     """地址版本已发生变化。"""
 
+    status_code = 409
+    error_code = "address_version_conflict"
+    public_message = "原地址已被修改"
 
-class AddressDeleteError(RuntimeError):
+
+class AddressDeleteError(ApplicationError):
     """地址删除失败。"""
 
+    error_code = "address_delete_failed"
+    public_message = "地址删除失败"
 
-class AddressUpdateError(RuntimeError):
+
+class AddressUpdateError(ApplicationError):
     """地址更新失败。"""
 
+    error_code = "address_update_failed"
+    public_message = "地址更新失败"
 
-class AddressStateConflictError(RuntimeError):
+
+class AddressStateConflictError(ApplicationError):
     """地址当前状态不允许执行操作。"""
+
+    status_code = 409
+    error_code = "address_state_conflict"
+    public_message = "地址状态冲突"
 
 
 class _AddressDefaultTransactionAborted(Exception):
     """中止默认地址切换事务。"""
 
 
-class AddressValidationError(RuntimeError):
+class AddressValidationError(ApplicationError):
     """地址数据不正确"""
 
+    status_code = 422
+    error_code = "address_validation_failed"
+    public_message = "地址数据不正确"
 
-class AddressProviderError(RuntimeError):
+
+class AddressProviderError(ApplicationError):
     """地址供应商服务异常基类。"""
+
+    status_code = 502
+    error_code = "address_provider_error"
+    public_message = "地址服务响应异常"
 
 
 class AddressFetchError(AddressProviderError):
     """高德地址获取失败"""
 
+    error_code = "address_provider_bad_response"
+
 
 class AddressNotFoundError(AddressProviderError):
     """未获取到有效地址"""
+
+    status_code = 422
+    error_code = "address_provider_location_not_found"
+    public_message = "未获取到有效地址"
 
 
 class AddressProviderConfigurationError(AddressProviderError):
     """地址服务配置错误"""
 
+    status_code = 500
+    error_code = "address_provider_configuration_error"
+    public_message = "地址服务配置错误"
+
 
 class AddressServiceUnavailableError(AddressProviderError):
     """地址服务暂时不可用"""
 
+    status_code = 503
+    error_code = "address_provider_unavailable"
+    public_message = "地址服务暂时不可用"
+
 
 class AddressServiceTimeoutError(AddressProviderError):
     """高德服务超时"""
+
+    status_code = 504
+    error_code = "address_provider_timeout"
+    public_message = "地址服务超时"
 
 
 class AddressService:
@@ -167,7 +219,10 @@ class AddressService:
         address_data = await self._repository.get_address(address_id, user_id)
         if address_data is None:
             raise AddressGetError("地址不存在")
-        return Address.model_validate(address_data)
+        try:
+            return Address.model_validate(address_data)
+        except ValidationError as exc:
+            raise AddressDataIntegrityError("地址数据异常") from exc
 
     async def get_address_status(
         self,
@@ -176,9 +231,15 @@ class AddressService:
     ) -> Literal["active", "deleted"]:
         """获取一条地址的状态。"""
 
-        address_status = await self._repository.get_address_status(address_id, user_id)
+        try:
+            address_status = await self._repository.get_address_status(
+                address_id,
+                user_id,
+            )
+        except AddressRepositoryDataError as exc:
+            raise AddressDataIntegrityError("地址数据异常") from exc
         if address_status is None:
-            raise AddressStatusGetError("获取地址状态失败")
+            raise AddressGetError("地址不存在")
 
         return address_status
 
