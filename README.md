@@ -9,7 +9,7 @@
 ## 技术栈
 
 - 前端：React 19、Vite 8、JavaScript、Fetch API
-- 后端：Python 3.10+、FastAPI、Uvicorn、Pydantic
+- 后端：Python 3.10+、uv、FastAPI、Uvicorn、Pydantic
 - 数据库：MongoDB、PyMongo 异步 API
 - 外部服务：高德地图 Web 服务 API
 - 开发环境：Windows、PowerShell
@@ -38,7 +38,8 @@
 │  │  └─ main.py               # 后端入口
 │  ├─ tests/                   # 后端单元测试
 │  ├─ .env.example
-│  └─ requirements.txt
+│  ├─ pyproject.toml            # 后端项目与直接依赖声明
+│  └─ uv.lock                   # uv 生成的完整依赖锁文件
 ├─ .gitignore
 └─ README.md
 ```
@@ -48,6 +49,7 @@
 - Node.js 20.19+ 或 22.12+
 - npm
 - Python 3.10+
+- uv
 - MongoDB
 - 可调用高德 Web 服务 API 的 Key
 
@@ -59,9 +61,29 @@
 
 ```powershell
 npm.cmd --prefix frontend install
-python -m venv backend\.venv
-backend\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
+uv sync --project backend --locked
 ```
+
+`uv sync` 会根据 `backend/pyproject.toml` 和 `backend/uv.lock` 自动创建或更新
+`backend/.venv`，不需要手动执行 `pip install` 或激活虚拟环境。
+
+后端依赖统一通过 uv 管理：
+
+```powershell
+# 添加运行时依赖
+uv add --project backend package-name
+
+# 添加开发依赖
+uv add --project backend --dev package-name
+
+# 删除依赖
+uv remove --project backend package-name
+
+# 按锁文件同步环境
+uv sync --project backend --locked
+```
+
+提交依赖变更时，应同时提交 `backend/pyproject.toml` 和 `backend/uv.lock`。
 
 ## 环境变量配置
 
@@ -118,7 +140,7 @@ MONGODB_SERVER_SELECTION_TIMEOUT_MS=5000
 先启动 MongoDB，再在项目根目录运行：
 
 ```powershell
-backend\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --reload --host localhost --port 8000
+uv run --project backend uvicorn app.main:app --app-dir backend --reload --host localhost --port 8000
 ```
 
 常用地址：
@@ -409,7 +431,7 @@ updated_at
 
 ```powershell
 Set-Location backend
-.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+uv run --locked python -m unittest discover -s tests -v
 ```
 
 当前测试覆盖地址模型、Router、Service、Repository、高德异常转换、CORS、MongoDB 生命周期、软删除、默认地址和并发冲突等行为。
@@ -452,10 +474,10 @@ npm.cmd --prefix frontend run dev
 
 ### Python 虚拟环境无法激活
 
-无需激活虚拟环境，可以直接调用其中的解释器：
+uv 不要求激活虚拟环境，直接通过 `uv run` 启动：
 
 ```powershell
-backend\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --reload --port 8000
+uv run --project backend uvicorn app.main:app --app-dir backend --reload --port 8000
 ```
 
 ### 端口被占用
